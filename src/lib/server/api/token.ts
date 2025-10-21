@@ -97,13 +97,24 @@ class TokenManager {
     this.timer = null;
   }
 
+  clear() {
+    this.token = null;
+    this.expiresAt = 0;
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+  }
+
   isExpiringSoon(bufferMs = 5 * 60 * 1000) {
     return !this.token || Date.now() + bufferMs >= this.expiresAt;
   }
 }
 
-// Singleton server-only
-export const tokenManager = new TokenManager();
+// 🔒 Singleton tahan HMR
+const g = globalThis as any;
+export const tokenManager: TokenManager =
+  g.__DSS_TOKEN_MANAGER__ ?? (g.__DSS_TOKEN_MANAGER__ = new TokenManager());
+
 export const getAuthHeader = () => tokenManager.getAuthHeader();
 export const login = (u?: string, p?: string) => tokenManager.login(u, p);
 export const refresh = () => tokenManager.refresh();
+export const clearToken = () => tokenManager.clear();
