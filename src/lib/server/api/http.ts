@@ -2,7 +2,7 @@
 import { getAuthHeader } from './token';
 import { env } from '$env/dynamic/private';
 
-const BASE = env.DSS_API_BASE;
+const BASE = env.DSS_API_BASE ?? 'https://spl.bapeten.go.id/dss-smile/public/api';
 
 // Wrapper untuk safe fetching dengan structured errors
 export async function apiFetchSafe(
@@ -55,4 +55,35 @@ export async function httpGet(path: string, params?: Record<string, any>) {
     throw new Response(JSON.stringify({ status: res.status, message }), { status: res.status });
   }
   return data;
+}
+
+export async function apiGet(fetch: typeof globalThis.fetch, path: string, token?: string, q: Record<string, string | number | undefined> = {}) {
+  const url = new URL(path.startsWith('http') ? path : BASE + path);
+  for (const [k, v] of Object.entries(q)) if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
+
+  const res = await fetch(url.toString(), {
+    headers: {
+      Accept: 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+
+  // catat error tapi jangan jatuhkan server
+  let body: any = null;
+  try { body = await res.json(); } catch { /* biarkan null */ }
+
+  if (!res.ok) {
+    console.error('[HTTP ERROR]', { url: url.toString(), status: res.status, body });
+    return { ok: false as const, status: res.status, data: null, raw: body };
+  }
+
+  // sebagian endpoint pakai {status,keterangan,response,meta}
+  // amankan akses datanya di sini
+  const data = body?.response ?? body?.data ?? null;
+  return { ok: true as const, status: res.status, data, raw: body };
+}
+
+export function getTokenFromGlobals(): string {
+  const authHeader = getAuthHeader();
+  return authHeader.Authorization ? authHeader.Authorization.slice(7) : ''; // remove 'Bearer '
 }

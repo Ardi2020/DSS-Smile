@@ -1,90 +1,65 @@
-import { json } from '@sveltejs/kit';
-import { apiFetchSafe } from '$lib/server/api/http';
-import { EP } from '$lib/server/smile/endpoints';
+import type { RequestHandler } from './$types';
+import { apiGet, getTokenFromGlobals } from '$lib/server/api/http';
 
-// helper baca array dari respons
-function takeArr(data: any): any[] {
-  if (!data) return [];
-  if (Array.isArray(data)) return data;
-  if (Array.isArray(data.response)) return data.response;
-  if (Array.isArray(data.items)) return data.items;
-  if (Array.isArray(data.data)) return data.data;
-  return [];
-}
+export const GET: RequestHandler = async ({ fetch }) => {
+  // ambil token dari globals (sesuaikan dengan tempat kamu menyimpan)
+  const token = getTokenFromGlobals();
 
-export async function GET({ url }) {
-  const page = url.searchParams.get('page') ?? '1';
-  const limit = url.searchParams.get('limit') ?? '50';
-  const paramLimit = url.searchParams.get('param_limit') ?? '200';
-  const topN = Number(url.searchParams.get('top') ?? 10);
+  const [jadwal, jadwalInspektur, tlhi, peraturan, trend] = await Promise.all([
+    apiGet(fetch, '/inspeksi-jadwal', token, { page: 1, limit: 50 }),
+    apiGet(fetch, '/inspektur-jadwal-inspeksi', token, { page: 1, limit: 50 }),
+    apiGet(fetch, '/tlhi/inspektur', token, { page: 1, limit: 50 }),
+    apiGet(fetch, '/peraturan/temuan', token, { page: 1, limit: 50 }),
+    apiGet(fetch, '/parameter/trend-parameter-bko', token, { page: 1, limit: 200 }),
+  ]);
 
-  const calls = [
-    ['jadwal',          `${EP.jadwal}?page=${page}&limit=${limit}`],
-    ['jadwal_ins',      `${EP.jadwalInspektur}?page=${page}&limit=${limit}`],
-    ['trend',           `${EP.trendParamBKO}?page=1&limit=${paramLimit}`],
-    ['peraturan',       `${EP.peraturanTemuan}?page=${page}&limit=${limit}`],
-    ['tlhi',            `${EP.tlhiInspektur}?page=${page}&limit=${limit}`]
-  ] as const;
+  // JANGAN iterasi kalau bukan array
+  const dataPeraturan = Array.isArray(peraturan.data) ? peraturan.data : [];
+  const peraturanTopN = dataPeraturan
+    .slice(0, 10)
+    .map((x: any) => ({
+      regulasi_id: x?.no_peraturan ?? null,
+      regulasi_kode: x?.pasal ?? null,
+      regulasi_judul: x?.nama_peraturan ?? null,
+      jumlah_temuan: Number(x?.jumlah_temuan ?? 0),
+    }));
 
-  const results = await Promise.all(
-    calls.map(([tag, path]) => apiFetchSafe(path))
+  const trenParamSample = Array.isArray(trend.data) ? trend.data : []; // kalau endpoint balas 500/401, ini []
+
+  const errors: Array<{ tag: string; status: number; message: string; path: string }> = [];
+  for (const [tag, r, path] of [
+    ['jadwal', jadwal, '/inspeksi-jadwal'],
+    ['jadwal_inspektur', jadwalInspektur, '/inspektur-jadwal-inspeksi'],
+    ['tlhi', tlhi, '/tlhi/inspektur'],
+    ['peraturan', peraturan, '/peraturan/temuan'],
+    ['trend', trend, '/parameter/trend-parameter-bko'],
+  ] as const) {
+    if (!r.ok) errors.push({ tag, status: r.status, message: JSON.stringify(r.raw), path });
+  }
+
+  return new Response(
+    JSON.stringify({
+      ok: errors.length === 0,
+      dashboard: {
+        ikk: null,
+        temuanByKategori: dataPeraturan.length
+          ? [{ kategori: 'Lainnya', jumlah: dataPeraturan.reduce((s: number, i: any) => s + Number(i?.jumlah_temuan ?? 0), 0) }]
+          : [],
+        tlhiOpenOverdue: [],
+        peraturanTopN,
+        trenParamSample,
+      },
+      meta: {
+        counts: {
+          jadwal: (jadwal.raw?.meta?.total ?? 0),
+          jadwal_inspektur: (jadwalInspektur.raw?.meta?.total ?? 0),
+          trend_param: trenParamSample.length,
+          peraturan_temuan: dataPeraturan.length,
+          tlhi_inspektur: (tlhi.raw?.meta?.total ?? 0),
+        },
+      },
+      errors,
+    }),
+    { headers: { 'content-type': 'application/json' } }
   );
-
-  const bag: Record<string, any[]> = {};
-  const errors: Array<{tag:string; status:number; message:string; path?:string}> = [];
-
-  results.forEach((res, i) => {
-    const tag = calls[i][0];
-    const path = calls[i][1];
-    if (res.ok) {
-      bag[tag] = takeArr(res.data);
-    } else {
-      errors.push({ tag, status: res.status, message: res.message, path });
-      console.error(`[DASH] ${tag} FAIL ${res.status} @ ${path} :: ${res.message}`);
-      bag[tag] = [];
-    }
-  });
-
-  // --- KPI derivation ---
-  // Peraturan (map berbagai kemungkinan nama field)
-  const peraturanTopN = [...bag.peraturan]
-    .map((x:any)=>({
-      regulasi_id: x.regulasi_id ?? x.id ?? x.peraturan_id ?? x.id_peraturan ?? null,
-      regulasi_kode: x.regulasi_kode ?? x.kode_peraturan ?? x.kode ?? x.no ?? null,
-      regulasi_judul: x.regulasi_judul ?? x.judul_peraturan ?? x.judul ?? null,
-      jumlah_temuan: Number(x.jumlah_temuan ?? x.total ?? x.jumlah ?? 0)
-    }))
-    .sort((a,b)=> b.jumlah_temuan - a.jumlah_temuan)
-    .slice(0, topN);
-
-  const temuanByKategori = Object.entries(
-    bag.peraturan.reduce((acc:any, it:any)=>{
-      const k = it.kategori ?? 'Lainnya';
-      const n = Number(it.jumlah_temuan ?? it.total ?? it.jumlah ?? 0);
-      acc[k] = (acc[k] ?? 0) + n;
-      return acc;
-    }, {})
-  ).map(([kategori, jumlah])=>({ kategori, jumlah: jumlah as number }))
-   .sort((a,b)=> (b as any).jumlah - (a as any).jumlah);
-
-  const now = Date.now();
-  const tlhiOpenOverdue = bag.tlhi
-    .filter((it:any)=> String(it.status ?? '').toUpperCase()==='OPEN')
-    .map((it:any)=> ({...it, is_overdue: it.due_date ? new Date(it.due_date).getTime() < now : false}))
-    .filter((it:any)=> it.is_overdue);
-
-  const trenParamSample = bag.trend.slice(Math.max(0, bag.trend.length - 20));
-
-  return json({
-    ok: errors.length === 0,
-    dashboard: { ikk: null, temuanByKategori, tlhiOpenOverdue, peraturanTopN, trenParamSample },
-    meta: { counts: {
-      jadwal: bag.jadwal.length,
-      jadwal_inspektur: bag.jadwal_ins.length,
-      trend_param: bag.trend.length,
-      peraturan_temuan: bag.peraturan.length,
-      tlhi_inspektur: bag.tlhi.length
-    }},
-    errors // biarkan terlihat sementara — mudah untuk menghapus nanti
-  });
-}
+};
