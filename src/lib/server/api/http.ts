@@ -1,53 +1,58 @@
 // src/lib/server/api/http.ts
-import { tokenManager, getAuthHeader, refresh, login } from './token';
-import { error as svelteError } from '@sveltejs/kit';
+import { getAuthHeader } from './token';
+import { env } from '$env/dynamic/private';
 
-const BASE_URL = process.env.DSS_BASE_URL ?? 'https://spl.bapeten.go.id/dss-smile/public/api';
+const BASE = env.DSS_API_BASE;
 
-type ApiInit = RequestInit & { skipAuth?: boolean };
-
-async function doFetch(path: string, init?: ApiInit) {
-  const url = path.startsWith('http') ? path : `${BASE_URL}${path}`;
-  const headers: Record<string, string> = {
-    Accept: 'application/json',
-    ...(init?.headers as Record<string, string> | undefined)
-  };
-
-  if (!init?.skipAuth) {
-    Object.assign(headers, getAuthHeader());
+// Wrapper untuk safe fetching dengan structured errors
+export async function apiFetchSafe(
+  path: string,
+  init?: RequestInit
+): Promise<{ ok: true; data: any } | { ok: false; status: number; message: string; path?: string }> {
+  try {
+    const res = await apiFetch(path, init as any);
+    return { ok: true, data: res };
+  } catch (e: any) {
+    // Jika yang dilempar adalah Response dari SvelteKit
+    if (e instanceof Response) {
+      let msg = '';
+      try { msg = await e.text(); } catch { /* ignore */ }
+      return { ok: false, status: e.status, message: msg?.slice(0, 400), path: path };
+    }
+    const status = typeof e?.status === 'number' ? e.status : 500;
+    const message = (e?.body ?? e?.message ?? 'Unknown').toString().slice(0, 400);
+    return { ok: false, status, message, path };
   }
-
-  const res = await fetch(url, { ...init, headers });
-  return res;
 }
 
-export async function apiFetch<T = unknown>(path: string, init?: ApiInit): Promise<T> {
-  // Pastikan token aktif (opsional): refresh kalau mau habis
-  if (!init?.skipAuth && tokenManager.isExpiringSoon()) {
-    try { await refresh(); } catch { /* biarkan 401 fallback */ }
+// Untuk kompatibilitas dengan spesifikasi dashboard
+export const apiFetch = httpGet;
+
+export async function httpGet(path: string, params?: Record<string, any>) {
+  const url = new URL(path.startsWith('http') ? path : `${BASE}${path}`);
+  if (params) {
+    Object.entries(params).forEach(([k, v]) => {
+      // limit harus string, lainnya biarkan
+      url.searchParams.set(k, typeof v === 'number' && k === 'limit' ? String(v) : String(v));
+    });
   }
 
-  let res = await doFetch(path, init);
-
-  // Fallback on-401 → coba refresh → retry sekali
-  if (res.status === 401 && !init?.skipAuth) {
-    try {
-      await refresh();
-    } catch {
-      // Refresh gagal → coba login ulang dengan env server
-      await login();
+  const res = await fetch(url, {
+    headers: {
+      Accept: 'application/json',
+      ...getAuthHeader()
     }
-    res = await doFetch(path, init);
-  }
+  });
 
-  // Tangani error standar API
+  const text = await res.text(); // untuk logging aman
+  let data: any;
+  try { data = text ? JSON.parse(text) : null; } catch { /* biarkan data undefined */ }
+
   if (!res.ok) {
-    const bodyText = await res.text();
-    // Seragamkan error SvelteKit (akan tertangkap handle errors)
-    throw svelteError(res.status, bodyText || `HTTP ${res.status}`);
+    // lempar detail upstream agar mudah didiagnosis di server log
+    const message = data?.keterangan || data?.message || `HTTP ${res.status}`;
+    console.error('[HTTP ERROR]', { url: url.toString(), status: res.status, body: data ?? text });
+    throw new Response(JSON.stringify({ status: res.status, message }), { status: res.status });
   }
-
-  // API kadang membungkus payload di {status,keterangan,response,meta}
-  const data = await res.json();
-  return (data?.response ?? data) as T;
+  return data;
 }
