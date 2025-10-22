@@ -1,65 +1,96 @@
-import type { RequestHandler } from './$types';
-import { apiGet, getTokenFromGlobals } from '$lib/server/api/http';
+// src/routes/api/dashboard/+server.ts
+import type { RequestHandler } from '@sveltejs/kit';
+import { getJson } from '$lib/server/api/http';
+import { shouldRefresh, refreshToken } from '$lib/server/api/token';
 
-export const GET: RequestHandler = async ({ fetch }) => {
-  // ambil token dari globals (sesuaikan dengan tempat kamu menyimpan)
-  const token = getTokenFromGlobals();
+type DSRes<T> = { status: number; keterangan: string; response: T; meta?: any };
 
-  const [jadwal, jadwalInspektur, tlhi, peraturan, trend] = await Promise.all([
-    apiGet(fetch, '/inspeksi-jadwal', token, { page: 1, limit: 50 }),
-    apiGet(fetch, '/inspektur-jadwal-inspeksi', token, { page: 1, limit: 50 }),
-    apiGet(fetch, '/tlhi/inspektur', token, { page: 1, limit: 50 }),
-    apiGet(fetch, '/peraturan/temuan', token, { page: 1, limit: 50 }),
-    apiGet(fetch, '/parameter/trend-parameter-bko', token, { page: 1, limit: 200 }),
-  ]);
-
-  // JANGAN iterasi kalau bukan array
-  const dataPeraturan = Array.isArray(peraturan.data) ? peraturan.data : [];
-  const peraturanTopN = dataPeraturan
-    .slice(0, 10)
-    .map((x: any) => ({
-      regulasi_id: x?.no_peraturan ?? null,
-      regulasi_kode: x?.pasal ?? null,
-      regulasi_judul: x?.nama_peraturan ?? null,
-      jumlah_temuan: Number(x?.jumlah_temuan ?? 0),
-    }));
-
-  const trenParamSample = Array.isArray(trend.data) ? trend.data : []; // kalau endpoint balas 500/401, ini []
-
+export const GET: RequestHandler = async () => {
   const errors: Array<{ tag: string; status: number; message: string; path: string }> = [];
-  for (const [tag, r, path] of [
-    ['jadwal', jadwal, '/inspeksi-jadwal'],
-    ['jadwal_inspektur', jadwalInspektur, '/inspektur-jadwal-inspeksi'],
-    ['tlhi', tlhi, '/tlhi/inspektur'],
-    ['peraturan', peraturan, '/peraturan/temuan'],
-    ['trend', trend, '/parameter/trend-parameter-bko'],
-  ] as const) {
-    if (!r.ok) errors.push({ tag, status: r.status, message: JSON.stringify(r.raw), path });
+
+  // Jaga-jaga refresh proaktif
+  if (shouldRefresh()) {
+    try { await refreshToken(); } catch (e) { /* biarkan 401 downstream */ }
   }
 
+  // 1) Peraturan top-N
+  let peraturanTopN: any[] = [];
+  try {
+    const resp = await getJson<DSRes<any[]>>('/peraturan/temuan', { query: { page: 1, limit: 100 } });
+    peraturanTopN = (resp.response ?? [])
+      .map(r => ({
+        regulasi_id: `${r.no_peraturan ? 'PB/PP' : ''}` || r.nama_peraturan,
+        regulasi_kode: r.pasal,
+        regulasi_judul: r.nama_peraturan,
+        jumlah_temuan: Number(r.jumlah_temuan ?? 0)
+      }))
+      .sort((a, b) => b.jumlah_temuan - a.jumlah_temuan)
+      .slice(0, 10);
+  } catch (e: any) {
+    errors.push({ tag: 'peraturan', status: 500, message: String(e?.message ?? e), path: '/peraturan/temuan' });
+  }
+
+  // 2) Temuan by kategori (kita treat "kategori" sebagai nama_peraturan/pasal fallback)
+  let temuanByKategori: Array<{ kategori: string; jumlah: number }> = [];
+  try {
+    const resp = await getJson<DSRes<any[]>>('/peraturan/temuan', { query: { page: 1, limit: 100 } });
+    const bucket: Record<string, number> = {};
+    for (const r of (resp.response ?? [])) {
+      const k = r.nama_peraturan ?? 'Lainnya';
+      bucket[k] = (bucket[k] ?? 0) + Number(r.jumlah_temuan ?? 0);
+    }
+    temuanByKategori = Object.entries(bucket).map(([kategori, jumlah]) => ({ kategori, jumlah }));
+  } catch (e: any) {
+    errors.push({ tag: 'temuan', status: 500, message: String(e?.message ?? e), path: '/peraturan/temuan' });
+  }
+
+  // 3) TLHI (open/overdue) — saat ini belum ada filter, tampilkan raw length
+  let tlhiOpenOverdue: any[] = [];
+  try {
+    const resp = await getJson<DSRes<any[]>>('/tlhi/inspektur', { query: { page: 1, limit: 100 } });
+    tlhiOpenOverdue = resp.response ?? [];
+  } catch (e: any) {
+    errors.push({ tag: 'tlhi', status: 500, message: String(e?.message ?? e), path: '/tlhi/inspektur' });
+  }
+
+  // 4) Tren Parameter (opsional; graceful on 500)
+  let trenParamSample: any[] = [];
+  try {
+    const resp = await getJson<DSRes<any[]>>('/parameter/trend-parameter-bko', { query: { page: 1, limit: 50 } });
+    trenParamSample = resp.response ?? [];
+  } catch (e: any) {
+    errors.push({ tag: 'trend', status: 500, message: String(e?.message ?? e), path: '/parameter/trend-parameter-bko' });
+    trenParamSample = []; // biarkan kosong untuk chart placeholder
+  }
+
+  // Ringkasan untuk kartu
+  const totalTemuan = temuanByKategori.reduce((s, it) => s + (Number(it.jumlah) || 0), 0);
+  const dashboard = {
+    ikk: null,
+    temuanByKategori,
+    tlhiOpenOverdue,
+    peraturanTopN,
+    trenParamSample
+  };
+
+  // Partial OK: true jika ada minimal satu modul berisi data
+  const anyData =
+    (peraturanTopN.length > 0) ||
+    (temuanByKategori.length > 0 && totalTemuan > 0) ||
+    (tlhiOpenOverdue.length > 0) ||
+    (trenParamSample.length > 0);
+
+  const meta = {
+    counts: {
+      peraturan_temuan: peraturanTopN.length,
+      temuan_total: totalTemuan,
+      tlhi_items: tlhiOpenOverdue.length,
+      trend_param: trenParamSample.length
+    }
+  };
+
   return new Response(
-    JSON.stringify({
-      ok: errors.length === 0,
-      dashboard: {
-        ikk: null,
-        temuanByKategori: dataPeraturan.length
-          ? [{ kategori: 'Lainnya', jumlah: dataPeraturan.reduce((s: number, i: any) => s + Number(i?.jumlah_temuan ?? 0), 0) }]
-          : [],
-        tlhiOpenOverdue: [],
-        peraturanTopN,
-        trenParamSample,
-      },
-      meta: {
-        counts: {
-          jadwal: (jadwal.raw?.meta?.total ?? 0),
-          jadwal_inspektur: (jadwalInspektur.raw?.meta?.total ?? 0),
-          trend_param: trenParamSample.length,
-          peraturan_temuan: dataPeraturan.length,
-          tlhi_inspektur: (tlhi.raw?.meta?.total ?? 0),
-        },
-      },
-      errors,
-    }),
-    { headers: { 'content-type': 'application/json' } }
+    JSON.stringify({ ok: anyData, dashboard, meta, errors }),
+    { status: 200, headers: { 'Content-Type': 'application/json' } }
   );
 };

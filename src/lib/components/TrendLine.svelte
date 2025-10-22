@@ -1,6 +1,10 @@
 <script lang="ts">
   // expects points: [{ waktu: ISO, nilai: number, bko?: number }]
+  // also receives errors for graceful degrade
   export let points: Array<{ waktu: string; nilai: number; bko?: number }> = [];
+  export let errors: Array<{ tag: string; status: number; message: string; path: string }> = [];
+  // Check if trend has error
+  const trendError = errors.find(e => e.tag === 'trend');
 
   // build scaled SVG path
   const w = 560, h = 160, pad = 18;
@@ -21,26 +25,35 @@
   const bko = bkos.length ? (bkos.reduce((a,b)=>a+b,0)/bkos.length) : null;
 </script>
 
-<div class="card">
-  <h3>Tren Parameter vs BKO (sample)</h3>
-  <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} class="chart">
-    <rect x="0" y="0" width={w} height={h} fill="#fff"/>
-    <!-- grid -->
-    {#each [0,1,2,3,4] as i}
-      <line x1={pad} x2={w-pad} y1={pad + i*((h-pad*2)/4)} y2={pad + i*((h-pad*2)/4)} stroke="#eef2f7"/>
-    {/each}
-    <!-- line -->
-    <path d={path} fill="none" stroke="#0ea5e9" stroke-width="2.2" stroke-linecap="round"/>
-    <!-- threshold -->
-    {#if bko !== null}
-      <line x1={pad} x2={w-pad} y1={sy(bko)} y2={sy(bko)} stroke="#ef4444" stroke-dasharray="5 5"/>
-    {/if}
-  </svg>
-  <div class="legend">
-    <span class="dot blue"></span> Nilai &nbsp;&nbsp;
-    {#if bko !== null}<span class="line red"></span> BKO rata-rata{/if}
+{#if points.length === 0 && trendError}
+  <div class="card">
+    <h3>Tren Parameter vs BKO (sample)</h3>
+    <div class="text-sm text-gray-500">
+      Tren tidak tersedia ({trendError.status}).
+    </div>
   </div>
-</div>
+{:else}
+  <div class="card">
+    <h3>Tren Parameter vs BKO (sample)</h3>
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} class="chart">
+      <rect x="0" y="0" width={w} height={h} fill="#fff"/>
+      <!-- grid -->
+      {#each [0,1,2,3,4] as i}
+        <line x1={pad} x2={w-pad} y1={pad + i*((h-pad*2)/4)} y2={pad + i*((h-pad*2)/4)} stroke="#eef2f7"/>
+      {/each}
+      <!-- line -->
+      <path d={path} fill="none" stroke="#0ea5e9" stroke-width="2.2" stroke-linecap="round"/>
+      <!-- threshold -->
+      {#if bko !== null}
+        <line x1={pad} x2={w-pad} y1={sy(bko)} y2={sy(bko)} stroke="#ef4444" stroke-dasharray="5 5"/>
+      {/if}
+    </svg>
+    <div class="legend">
+      <span class="dot blue"></span> Nilai &nbsp;&nbsp;
+      {#if bko !== null}<span class="line red"></span> BKO rata-rata{/if}
+    </div>
+  </div>
+{/if}
 
 <style>
   .card { border:1px solid #e5e7eb; border-radius:14px; padding:14px; background:#fff }

@@ -1,89 +1,70 @@
 // src/lib/server/api/http.ts
-import { getAuthHeader } from './token';
+import { getAuthHeader, refreshToken } from './token';
 import { env } from '$env/dynamic/private';
 
 const BASE = env.DSS_API_BASE ?? 'https://spl.bapeten.go.id/dss-smile/public/api';
 
-// Wrapper untuk safe fetching dengan structured errors
-export async function apiFetchSafe(
-  path: string,
-  init?: RequestInit
-): Promise<{ ok: true; data: any } | { ok: false; status: number; message: string; path?: string }> {
-  try {
-    const res = await apiFetch(path, init as any);
-    return { ok: true, data: res };
-  } catch (e: any) {
-    // Jika yang dilempar adalah Response dari SvelteKit
-    if (e instanceof Response) {
-      let msg = '';
-      try { msg = await e.text(); } catch { /* ignore */ }
-      return { ok: false, status: e.status, message: msg?.slice(0, 400), path: path };
-    }
-    const status = typeof e?.status === 'number' ? e.status : 500;
-    const message = (e?.body ?? e?.message ?? 'Unknown').toString().slice(0, 400);
-    return { ok: false, status, message, path };
-  }
+type HttpOptions = { query?: Record<string, any>; signal?: AbortSignal };
+
+function toQuery(q?: Record<string, any>) {
+  if (!q) return '';
+  const sp = new URLSearchParams();
+  for (const [k, v] of Object.entries(q)) if (v !== undefined && v !== null) sp.set(k, String(v));
+  const s = sp.toString();
+  return s ? `?${s}` : '';
 }
 
-// Untuk kompatibilitas dengan spesifikasi dashboard
+async function doFetch(path: string, opts: HttpOptions = {}, withAuth = true) {
+  const res = await fetch(`${BASE}${path}${toQuery(opts.query)}`, {
+    method: 'GET',
+    headers: {
+      'Accept': 'application/json',
+      ...(withAuth ? getAuthHeader() as Record<string, string> : {})
+    } as Record<string, string>,
+    signal: opts.signal
+  });
+  return res;
+}
+
+// Retry sekali bila 401 → refresh → ulangi
+export async function fetchAuth(path: string, opts: HttpOptions = {}) {
+  let res = await doFetch(path, opts, true);
+  if (res.status === 401) {
+    await refreshToken().catch(() => null);
+    res = await doFetch(path, opts, true);
+  }
+  return res;
+}
+
+export async function getJson<T>(path: string, opts: HttpOptions = {}): Promise<T> {
+  const res = await fetchAuth(path, opts);
+  // Biarkan caller yang memutuskan kalau bukan 200
+  const text = await res.text();
+  try { return JSON.parse(text) as T; } catch { throw new Error(text); }
+}
+
+// Backward compatibility for other files
+export async function httpGet(path: string, params?: Record<string, any>) {
+  const res = await fetchAuth(path, { query: params });
+  const text = await res.text();
+  let data: any;
+  try { data = text ? JSON.parse(text) : null; } catch { return { status: 500, keterangan: `JSON parse error: ${text.slice(0, 100)}` }; }
+  return {
+    status: res.status,
+    keterangan: data?.keterangan ?? (res.ok ? 'OK' : `${res.status}`),
+    response: data?.response ?? data?.data ?? null,
+    meta: data?.meta ?? undefined
+  };
+}
+
 export const apiFetch = httpGet;
 
-export async function httpGet(path: string, params?: Record<string, any>) {
-  const url = new URL(path.startsWith('http') ? path : `${BASE}${path}`);
-  if (params) {
-    Object.entries(params).forEach(([k, v]) => {
-      // limit harus string, lainnya biarkan
-      url.searchParams.set(k, typeof v === 'number' && k === 'limit' ? String(v) : String(v));
-    });
-  }
-
-  const res = await fetch(url, {
-    headers: {
-      Accept: 'application/json',
-      ...getAuthHeader()
-    }
-  });
-
-  const text = await res.text(); // untuk logging aman
-  let data: any;
-  try { data = text ? JSON.parse(text) : null; } catch { /* biarkan data undefined */ }
-
-  if (!res.ok) {
-    // lempar detail upstream agar mudah didiagnosis di server log
-    const message = data?.keterangan || data?.message || `HTTP ${res.status}`;
-    console.error('[HTTP ERROR]', { url: url.toString(), status: res.status, body: data ?? text });
-    throw new Response(JSON.stringify({ status: res.status, message }), { status: res.status });
-  }
-  return data;
-}
-
 export async function apiGet(fetch: typeof globalThis.fetch, path: string, token?: string, q: Record<string, string | number | undefined> = {}) {
-  const url = new URL(path.startsWith('http') ? path : BASE + path);
-  for (const [k, v] of Object.entries(q)) if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
-
-  const res = await fetch(url.toString(), {
-    headers: {
-      Accept: 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  });
-
-  // catat error tapi jangan jatuhkan server
-  let body: any = null;
-  try { body = await res.json(); } catch { /* biarkan null */ }
-
-  if (!res.ok) {
-    console.error('[HTTP ERROR]', { url: url.toString(), status: res.status, body });
-    return { ok: false as const, status: res.status, data: null, raw: body };
-  }
-
-  // sebagian endpoint pakai {status,keterangan,response,meta}
-  // amankan akses datanya di sini
-  const data = body?.response ?? body?.data ?? null;
-  return { ok: true as const, status: res.status, data, raw: body };
+  const data = await getJson(path, { query: q });
+  return { ok: true, status: 200, data, raw: { response: data } };
 }
 
 export function getTokenFromGlobals(): string {
-  const authHeader = getAuthHeader();
-  return authHeader.Authorization ? authHeader.Authorization.slice(7) : ''; // remove 'Bearer '
+  const auth = getAuthHeader();
+  return auth.Authorization ? auth.Authorization.slice(7) : ''; // remove 'Bearer '
 }

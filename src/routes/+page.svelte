@@ -7,6 +7,7 @@
   export let data;
   const dash = data?.dashboard;
   const meta = data?.meta;
+  const errors = data?.errors;
   const err = data?.error;
 
   let busy = false;
@@ -41,14 +42,14 @@
 
   {#if dash}
     <section class="grid kpi">
-      <KpiCard title="Kategori Temuan" value={dash.temuanByKategori?.length ?? 0} subtitle="Jumlah kategori aktif"/>
-      <KpiCard title="TLHI Open & Overdue" value={dash.tlhiOpenOverdue?.length ?? 0} subtitle="Item terlambat ditutup"/>
-      <KpiCard title="Top Regulasi" value={dash.peraturanTopN?.length ?? 0} subtitle="Daftar prioritas pemeriksaan"/>
-      <KpiCard title="Sampel Tren" value={dash.trenParamSample?.length ?? 0} subtitle="Poin data terakhir"/>
+      <KpiCard title="Kategori Temuan" value={meta?.counts?.temuan_total ?? 0} subtitle="Total temuan lintas kategori"/>
+      <KpiCard title="TLHI Open & Overdue" value={meta?.counts?.tlhi_items ?? 0} subtitle="Item terlambat ditutup"/>
+      <KpiCard title="Top Regulasi" value={meta?.counts?.peraturan_temuan ?? 0} subtitle="Daftar prioritas pemeriksaan"/>
+      <KpiCard title="Sampel Tren" value={meta?.counts?.trend_param ?? 0} subtitle="Poin data terakhir"/>
     </section>
 
     <section class="grid two">
-      <div><TrendLine points={dash.trenParamSample ?? []} /></div>
+      <div><TrendLine points={dash.trenParamSample ?? []} errors={errors ?? []} /></div>
       <div><TopTable rows={dash.peraturanTopN ?? []} /></div>
     </section>
 

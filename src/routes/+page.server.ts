@@ -5,6 +5,6 @@ export const load: PageServerLoad = async ({ fetch }) => {
   if (!res.ok) {
     return { dashboard: null, error: `Gagal memuat dashboard: ${res.status}` };
   }
-  const { dashboard, meta } = await res.json();
-  return { dashboard, meta };
+  const { dashboard, meta, errors } = await res.json();
+  return { dashboard, meta, errors };
 };

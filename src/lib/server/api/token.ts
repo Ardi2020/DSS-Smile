@@ -1,5 +1,34 @@
 // src/lib/server/api/token.ts
-import { setTimeout as delay } from 'node:timers/promises';
+// src/lib/server/api/token.ts
+let ACCESS_TOKEN = '';
+let EXPIRES_AT = 0; // epoch ms
+
+export function setToken(token: string, ttlSec: number) {
+  ACCESS_TOKEN = token;
+  EXPIRES_AT = Date.now() + (ttlSec - 60) * 1000; // buffer 60s
+}
+
+export function getAuthHeader() {
+  if (!ACCESS_TOKEN) return {};
+  return { Authorization: `Bearer ${ACCESS_TOKEN}` };
+}
+
+export async function refreshToken() {
+  if (!ACCESS_TOKEN) throw new Error('No token to refresh');
+  // POST /refresh
+  const res = await fetch('https://spl.bapeten.go.id/dss-smile/public/api/refresh', {
+    method: 'POST',
+    headers: { Accept: 'application/json', Authorization: `Bearer ${ACCESS_TOKEN}` }
+  });
+  if (!res.ok) throw new Error(`refresh failed: ${res.status}`);
+  const data = await res.json();
+  // Respons resmi berisi access_token, token_type, expires_in (string detik)
+  setToken(data.access_token ?? data.response?.access_token, Number(data.expires_in ?? data.response?.expires_in ?? 3600));
+}
+
+export function shouldRefresh() {
+  return Date.now() >= EXPIRES_AT;
+}
 
 type LoginOk = {
   status: number;
@@ -51,6 +80,8 @@ class TokenManager {
 
     if (!token) throw new Error('No access_token in response');
     this.setToken(token, Number.isFinite(expiresIn) ? expiresIn : 3600);
+    // Juga update global ACCESS_TOKEN untuk konsistensi
+    setToken(token, Number.isFinite(expiresIn) ? expiresIn : 3600);
     return token;
   }
 
@@ -75,6 +106,7 @@ class TokenManager {
 
       if (!token) throw new Error('No access_token on refresh');
       this.setToken(token, Number.isFinite(expiresIn) ? expiresIn : 3600);
+      setToken(token, Number.isFinite(expiresIn) ? expiresIn : 3600);
       return token;
     } finally {
       this.refreshing = false;
@@ -114,7 +146,7 @@ const g = globalThis as any;
 export const tokenManager: TokenManager =
   g.__DSS_TOKEN_MANAGER__ ?? (g.__DSS_TOKEN_MANAGER__ = new TokenManager());
 
-export const getAuthHeader = () => tokenManager.getAuthHeader();
+export const getAuthHeaderClass = () => tokenManager.getAuthHeader();
 export const login = (u?: string, p?: string) => tokenManager.login(u, p);
 export const refresh = () => tokenManager.refresh();
 export const clearToken = () => tokenManager.clear();
