@@ -12,17 +12,18 @@ const cookieOpts = {
 
 export const actions: Actions = {
   default: async ({ request, cookies }) => {
-    try {
-      const form = await request.formData();
-      const username = String(form.get('username') ?? '');
-      const password = String(form.get('password') ?? '');
-      if (!username || !password) return fail(400, { error: 'Username/password wajib diisi' });
+    const form = await request.formData();
+    const username = String(form.get('username') ?? '');
+    const password = String(form.get('password') ?? '');
+    if (!username || !password) return fail(400, { error: 'Username/password wajib diisi' });
 
+    try {
       await login(username, password);        // simpan token di server memory
       cookies.set('dss_authed', '1', cookieOpts); // sesi UI (tanpa token)
-      throw redirect(303, '/');               // ke dashboard
     } catch (e: any) {
       return fail(400, { error: e?.message ?? 'Gagal login' });
     }
+
+    throw redirect(303, '/');               // ke dashboard — di luar try agar tidak tertangkap
   }
 };

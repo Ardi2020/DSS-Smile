@@ -32,12 +32,12 @@
       <form method="POST" class="form">
         <label>
           <span>Username</span>
-          <input name="username" autocomplete="username" required />
+          <input name="username" value="unand_view" autocomplete="username" required />
         </label>
 
         <label>
           <span>Password</span>
-          <input name="password" type="password" autocomplete="current-password" required />
+          <input name="password" type="password" value="unandTI_24#" autocomplete="current-password" required />
         </label>
 
         <button class="btn" type="submit" aria-label="Masuk ke Balis SPK">Masuk</button>
