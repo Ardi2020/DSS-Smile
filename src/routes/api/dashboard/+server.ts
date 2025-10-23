@@ -2,6 +2,7 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { getJson } from '$lib/server/api/http';
 import { shouldRefresh, refreshToken } from '$lib/server/api/token';
+import { listFacilitiesOfficial } from '$lib/server/smile/fasilitas';
 
 type DSRes<T> = { status: number; keterangan: string; response: T; meta?: any };
 
@@ -63,6 +64,15 @@ export const GET: RequestHandler = async () => {
     trenParamSample = []; // biarkan kosong untuk chart placeholder
   }
 
+  // 5) Fasilitas resmi (untuk hitung total fasilitas)
+  let facilitiesCount: number = 0;
+  try {
+    const facilities = await listFacilitiesOfficial(1000); // limit tinggi untuk total
+    facilitiesCount = facilities.length;
+  } catch (e: any) {
+    errors.push({ tag: 'facilities', status: 500, message: String(e?.message ?? e), path: '/instalasi' });
+  }
+
   // Ringkasan untuk kartu
   const totalTemuan = temuanByKategori.reduce((s, it) => s + (Number(it.jumlah) || 0), 0);
   const dashboard = {
@@ -78,14 +88,16 @@ export const GET: RequestHandler = async () => {
     (peraturanTopN.length > 0) ||
     (temuanByKategori.length > 0 && totalTemuan > 0) ||
     (tlhiOpenOverdue.length > 0) ||
-    (trenParamSample.length > 0);
+    (trenParamSample.length > 0) ||
+    (facilitiesCount > 0);
 
   const meta = {
     counts: {
       peraturan_temuan: peraturanTopN.length,
       temuan_total: totalTemuan,
       tlhi_items: tlhiOpenOverdue.length,
-      trend_param: trenParamSample.length
+      trend_param: trenParamSample.length,
+      facilities_count: facilitiesCount
     }
   };
 

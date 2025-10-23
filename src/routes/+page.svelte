@@ -30,6 +30,7 @@
   <header class="bar">
     <h1>Balis SPK — Dashboard</h1>
     <div class="actions">
+      <a href="/facilities" class="btn">Fasilitas</a>
       <button class="btn" on:click={refreshData} disabled={busy}>{busy ? 'Merefresh…' : 'Refresh Data'}</button>
       <form method="POST" action="/logout"><button class="btn ghost" type="submit">Keluar</button></form>
       <button class="btn ghost" on:click={refreshToken} disabled={busy}>Refresh Token</button>
@@ -46,6 +47,7 @@
       <KpiCard title="TLHI Open & Overdue" value={meta?.counts?.tlhi_items ?? 0} subtitle="Item terlambat ditutup"/>
       <KpiCard title="Top Regulasi" value={meta?.counts?.peraturan_temuan ?? 0} subtitle="Daftar prioritas pemeriksaan"/>
       <KpiCard title="Sampel Tren" value={meta?.counts?.trend_param ?? 0} subtitle="Poin data terakhir"/>
+      <KpiCard title="Fasilitas Diawasi" value={meta?.counts?.facilities_count ?? 0} subtitle="Total fasilitas dari API resmi"/>
     </section>
 
     <section class="grid two">

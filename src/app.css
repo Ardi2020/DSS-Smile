@@ -1,0 +1,13 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* optional: tone default */
+:root {
+  color-scheme: light;
+}
+
+@media print {
+  a[href]::after { content: ""; } /* hilangkan URL setelah link */
+  body { background: white; }
+}
