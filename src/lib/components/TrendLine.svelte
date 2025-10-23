@@ -56,9 +56,66 @@
 {/if}
 
 <style>
-  .card { border:1px solid #e5e7eb; border-radius:14px; padding:14px; background:#fff }
-  .chart { width:100%; height:auto; display:block; border-radius:10px; border:1px solid #f0f2f5 }
-  .legend { margin-top:8px; font-size:12px; color:#6b7280 }
-  .dot.blue { display:inline-block; width:10px; height:10px; border-radius:99px; background:#0ea5e9; margin-right:6px }
-  .line.red { display:inline-block; width:18px; height:2px; background:#ef4444; margin-right:6px }
+  .card {
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    padding: 16px;
+    background: #fff;
+    box-shadow: 0 1px 0 rgba(0,0,0,.02);
+    transition: all 0.3s ease;
+  }
+
+  .card:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0,0,0,.08);
+    border-color: #0ea5e9;
+  }
+
+  h3 {
+    margin: 0 0 12px 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: #1f2937;
+  }
+
+  .chart {
+    width: 100%;
+    height: auto;
+    display: block;
+    border-radius: 10px;
+    border: 1px solid #f3f4f6;
+    background: #fafafa;
+  }
+
+  .legend {
+    margin-top: 12px;
+    font-size: 12px;
+    color: #6b7280;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+  }
+
+  .dot.blue {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 99px;
+    background: #0ea5e9;
+    margin-right: 6px;
+  }
+
+  .line.red {
+    display: inline-block;
+    width: 18px;
+    height: 2px;
+    background: #ef4444;
+    margin-right: 6px;
+  }
+
+  .text-sm {
+    font-size: 14px;
+    color: #6b7280;
+  }
 </style>

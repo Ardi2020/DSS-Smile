@@ -3,5 +3,6 @@ export const EP = {
   jadwalInspektur:      '/inspektur-jadwal-inspeksi',
   trendParamBKO:        '/parameter/trend-parameter-bko',
   peraturanTemuan:      '/peraturan/temuan',
-  tlhiInspektur:        '/tlhi/inspektur'
+  tlhiInspektur:        '/tlhi/inspektur',
+  tlhmMelebihiBKO:      '/tlhm/melebihi-bko'
 } as const;
