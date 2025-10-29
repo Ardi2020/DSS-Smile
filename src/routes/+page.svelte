@@ -2,9 +2,11 @@
   import KpiCard from '$lib/components/KpiCard.svelte';
   import TopTable from '$lib/components/TopTable.svelte';
   import TrendLine from '$lib/components/TrendLine.svelte';
+  import TrendBkoChart from '$lib/components/TrendBkoChart.svelte';
   import PrioritasTable from '$lib/components/PrioritasTable.svelte';
   import TlhiOverdueTable from '$lib/components/TlhiOverdueTable.svelte';
   import { invalidateAll } from '$app/navigation';
+  import { onMount } from 'svelte';
 
   export let data;
   const dash = data?.dashboard;
@@ -13,6 +15,37 @@
   const err = data?.error;
 
   let busy = false;
+
+  // Trend BKO state
+  let facilityId = 'PEB';
+  let selectedParam: string | null = null;
+  let range = { from: '', to: '' };
+  let loading = true;
+  let error: string | null = null;
+  let rows: any[] = [];
+  let params: string[] = [];
+
+  async function loadTrend() {
+    loading = true; 
+    error = null;
+    const q = new URLSearchParams();
+    q.set('facilityId', facilityId);
+    if (selectedParam) q.set('parameter', selectedParam);
+    const res = await fetch(`/api/dashboard?${q.toString()}`);
+    const json = await res.json();
+    if (!json.ok) {
+      error = json.error ?? 'Gagal memuat tren';
+      loading = false;
+      return;
+    }
+    const tb = json.dashboard.trendBKO;
+    rows = tb.rows ?? [];
+    params = tb.availableParams ?? [];
+    range = { from: tb.from, to: tb.to };
+    // auto-pilih parameter pertama jika belum dipilih
+    if (!selectedParam && params.length > 0) selectedParam = params[0];
+    loading = false;
+  }
 
   async function refreshData() {
     busy = true;
@@ -26,6 +59,8 @@
     await invalidateAll();
     busy = false;
   }
+
+  onMount(loadTrend);
 </script>
 
 <!-- Header Bar -->
@@ -71,6 +106,21 @@
       <div class="card">
         <TopTable rows={dash.peraturanTopN ?? []} />
       </div>
+    </section>
+
+    <!-- Trend BKO Section -->
+    <section class="card">
+      <h3>Tren Parameter vs BKO</h3>
+      <TrendBkoChart 
+        {facilityId}
+        bind:selectedParam
+        bind:range
+        bind:loading
+        bind:error
+        bind:rows
+        bind:params
+        onLoad={loadTrend}
+      />
     </section>
 
     <section class="panel">

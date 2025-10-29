@@ -4,6 +4,7 @@ import { getJson } from '$lib/server/api/http';
 import { shouldRefresh, refreshToken } from '$lib/server/api/token';
 import { listFacilitiesOfficial } from '$lib/server/smile/fasilitas';
 import { EP } from '$lib/server/smile/endpoints';
+import { fetchTrendBKO, type TrendBkoRow } from '$lib/server/smile/parameter';
 
 type DSRes<T> = { status: number; keterangan: string; response: T; meta?: any };
 
@@ -249,12 +250,54 @@ async function buildTrendParamSample(getJson: Function): Promise<{ points: Trend
 }
 // ===================[ END Helpers Tren ]===================
 
-export const GET: RequestHandler = async ({ fetch }) => {
+function defaultRange(days = 90) {
+  const to = new Date();
+  const from = new Date();
+  from.setDate(to.getDate() - days);
+  return { from: from.toISOString(), to: to.toISOString() };
+}
+
+export const GET: RequestHandler = async ({ url, fetch }) => {
   const errors: Array<{ tag: string; status: number; message: string; path: string }> = [];
 
   // Jaga-jaga refresh proaktif
   if (shouldRefresh()) {
     try { await refreshToken(); } catch (e) { /* biarkan 401 downstream */ }
+  }
+
+  // Query parameters untuk trend BKO
+  const facilityId = url.searchParams.get('facilityId') ?? 'PEB';
+  const parameter = url.searchParams.get('parameter') ?? undefined;
+  const qFrom = url.searchParams.get('from');
+  const qTo = url.searchParams.get('to');
+  const { from: dFrom, to: dTo } = defaultRange(90);
+  const from = qFrom ?? dFrom;
+  const to = qTo ?? dTo;
+
+  // Trend BKO data
+  let trendBKO: any = null;
+  try {
+    const trendRows = await fetchTrendBKO({ facilityId, from, to, parameter, limit: 500 });
+
+    // kelompokkan daftar parameter tersedia untuk dropdown
+    const paramSet = new Set<string>();
+    for (const r of trendRows) if (r.parameter) paramSet.add(r.parameter);
+    const availableParams = Array.from(paramSet).sort();
+
+    // Check if data is from fallback
+    const isFromFallback = trendRows.length > 0 && trendRows[0]?.parameter === 'BKO Violation';
+
+    trendBKO = {
+      facilityId,
+      from,
+      to,
+      parameter: parameter ?? null,
+      availableParams,
+      rows: trendRows,
+      isFromFallback
+    };
+  } catch (e: any) {
+    errors.push({ tag: 'trendBKO', status: 500, message: String(e?.message ?? e), path: 'fetchTrendBKO' });
   }
 
   // 1) Peraturan top-N
@@ -445,6 +488,7 @@ export const GET: RequestHandler = async ({ fetch }) => {
     bkoExceedByFacility,
     tlhiOverdueByFacility: tlhiOverdueByFacilityNew,
     riskPrioritas,
+    trendBKO,
     // opsional (UI Anda akan mengabaikan jika tidak digunakan)
     trenParamSampleSource,
     trenParamSampleNote
