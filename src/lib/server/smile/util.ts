@@ -26,3 +26,6 @@ export function cacheGet(key: string, ttlMs = 60_000) {
 export function cacheSet(key: string, data: any) {
   _cache.set(key, { at: Date.now(), data });
 }
+
+// Expose cache globally untuk clearing
+(globalThis as any).__facility_cache__ = _cache;

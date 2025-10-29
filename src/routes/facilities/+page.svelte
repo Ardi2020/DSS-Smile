@@ -3,11 +3,12 @@
   import type { Facility } from '$lib/server/smile/fasilitas';
 
   export let data;
-  let facilities: Facility[] = data.facilities;
+  let facilities: Facility[] = data.facilities ?? [];
   let facets: Array<{ label: string; count: number }> = data.meta?.facets?.tipe ?? [];
   let total = data.meta?.counts?.total ?? undefined;
   if (typeof total !== 'number' || total < 0) total = facilities.length;
   let source = data.source;
+  let error = data.error || (!data.ok ? 'Gagal memuat data fasilitas' : null);
 
   // UI state
   let q = '';
@@ -34,6 +35,7 @@
 <div class="bar">
   <h1>Fasilitas Diawasi</h1>
   <div class="actions">
+      <button class="btn" on:click={() => window.location.href = '/facilities?noCache=1'}>🔄 Refresh</button>
     <a href="/api/export/pdf/facilities" class="btn" rel="noopener">Export PDF</a>
     <a href="/" class="btn ghost">← Kembali ke Dashboard</a>
   </div>
@@ -74,7 +76,14 @@
     </div>
   </div>
 
-  {#if filtered.length === 0}
+  {#if error}
+    <div class="error-state">
+      <div class="error-icon">⚠️</div>
+      <h3>Terjadi Kesalahan</h3>
+      <p>{error}</p>
+      <button class="btn" on:click={() => window.location.reload()}>Coba Lagi</button>
+    </div>
+  {:else if filtered.length === 0}
     <div class="empty-state">
       <div class="empty-icon">🔍</div>
       <p>Tidak ada fasilitas yang cocok dengan filter.</p>
@@ -92,7 +101,7 @@
             <h3 class="facility-name">{f.nama}</h3>
           </div>
           <div class="card-footer">
-            <a class="detail-link" href={`/facility/${encodeURIComponent(f.id)}`}>
+            <a class="detail-link" href={`/facility/${encodeURIComponent(String(f.id))}`}>
               Lihat Detail →
             </a>
           </div>
@@ -227,6 +236,34 @@
 
   .filter-input::placeholder {
     color: #9ca3af;
+  }
+
+  /* Error State */
+  .error-state {
+    text-align: center;
+    padding: 60px 20px;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 14px;
+    color: #dc2626;
+  }
+
+  .error-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+  }
+
+  .error-state h3 {
+    font-size: 20px;
+    font-weight: 600;
+    margin: 0 0 8px 0;
+    color: #dc2626;
+  }
+
+  .error-state p {
+    font-size: 16px;
+    margin: 0 0 20px 0;
+    color: #7f1d1d;
   }
 
   /* Empty State */

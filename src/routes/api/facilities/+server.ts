@@ -12,8 +12,9 @@ function getCache(key: string) {
   return c.data;
 }
 function setCache(key: string, data: any) {
-  // JANGAN cache payload kosong
+  // JANGAN cache payload kosong atau error
   if (Array.isArray(data?.facilities) && data.facilities.length === 0) return;
+  if (!data?.ok || data?.errors?.length > 0) return;
   cache.set(key, { at: Date.now(), data });
 }
 
@@ -21,6 +22,11 @@ export const GET: RequestHandler = async ({ url }) => {
   const limit = Number(url.searchParams.get('limit') ?? 1000);
   const noCache = url.searchParams.get('noCache') === '1';
   const key = `facilities:${limit}`;
+
+  // Clear cache jika noCache=1
+  if (noCache) {
+    cache.clear();
+  }
 
   if (!noCache) {
     const cached = getCache(key);

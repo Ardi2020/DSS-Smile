@@ -10,13 +10,23 @@ export const GET: RequestHandler = async ({ params, url }) => {
   if (!params.id) throw new Error('ID fasilitas tidak disediakan');
   const id = decodeURIComponent(params.id);
   const ttl = Number(url.searchParams.get('ttl') ?? 60_000);
+  const noCache = url.searchParams.get('noCache') === '1';
   const ck = `facility_overview:${id}`;
-  const cached = cacheGet(ck, ttl);
-  if (cached) return new Response(JSON.stringify(cached), { headers: { 'Content-Type': 'application/json' } });
 
-  // 1) Ambil daftar fasilitas dari BFF existing untuk dapatkan nama/tipe
-  const fac = await fetch(url.origin + '/api/facilities').then(r => r.json());
-  const profile = (fac.facilities ?? []).find((f: any) => String(f.id) === id) ?? { id, nama: id, tipe: null, lokasi: null };
+  // Clear cache jika noCache=1
+  if (noCache) {
+    // Clear all facility-related caches - menggunakan global cache dari util
+    const globalCache = (globalThis as any).__facility_cache__;
+    if (globalCache && typeof globalCache.clear === 'function') {
+      globalCache.clear();
+    }
+  }
+
+  const cached = cacheGet(ck, ttl);
+  if (cached && !noCache) return new Response(JSON.stringify(cached), { headers: { 'Content-Type': 'application/json' } });
+
+  // 1) Buat profile dasar dari ID yang diberikan
+  const profile = { id, nama: id, tipe: null, lokasi: null };
 
   // 2) Ambil jadwal (basis kuat untuk filter)
   const jadwalRes = await getJson<DSList<Row>>('/inspektur-jadwal-inspeksi', { query: { page: 1, limit: 1000 } });

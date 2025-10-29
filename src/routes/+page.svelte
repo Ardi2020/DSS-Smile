@@ -65,8 +65,12 @@
     </section>
 
     <section class="grid two">
-      <div><TrendLine points={dash.trenParamSample ?? []} errors={errors ?? []} /></div>
-      <div><TopTable rows={dash.peraturanTopN ?? []} /></div>
+      <div class="card">
+        <TrendLine points={dash.trenParamSample ?? []} errors={errors ?? []} />
+      </div>
+      <div class="card">
+        <TopTable rows={dash.peraturanTopN ?? []} />
+      </div>
     </section>
 
     <section class="panel">
@@ -81,13 +85,35 @@
     <div class="loading">Memuat data dashboard…</div>
   {/if}
 
-  {#if data?.dashboard?.riskPrioritas?.length}
-    <PrioritasTable items={data.dashboard.riskPrioritas} limit={5} />
-  {/if}
+  <section class="grid two">
+    {#if data?.dashboard?.riskPrioritas?.length}
+      <div class="card">
+        <PrioritasTable items={data.dashboard.riskPrioritas} limit={5} />
+      </div>
+    {:else}
+      <div class="card">
+        <div class="mb-3 flex items-baseline justify-between">
+          <h2 class="text-base font-semibold">Prioritas Inspeksi (Top 5)</h2>
+          <small class="text-gray-500">berdasarkan indikator: TLHM > BKO dan TLHI overdue</small>
+        </div>
+        <div class="text-sm text-gray-500">Tidak ada rekomendasi prioritas saat ini.</div>
+      </div>
+    {/if}
 
-  {#if data?.dashboard?.tlhiOverdueByFacility?.length}
-    <TlhiOverdueTable items={data.dashboard.tlhiOverdueByFacility} limit={5} />
-  {/if}
+    {#if data?.dashboard?.tlhiOverdueByFacility?.length}
+      <div class="card">
+        <TlhiOverdueTable items={data.dashboard.tlhiOverdueByFacility} limit={5} />
+      </div>
+    {:else}
+      <div class="card">
+        <div class="mb-3 flex items-baseline justify-between">
+          <h2 class="text-base font-semibold">TLHI Overdue (Top 5)</h2>
+          <small class="text-gray-500">status Belum TL / Proses Evaluasi yang melewati tanggal komitmen</small>
+        </div>
+        <div class="text-sm text-gray-500">Tidak ada TLHI overdue saat ini.</div>
+      </div>
+    {/if}
+  </section>
 
   {#if meta}
     <footer class="meta">
@@ -204,6 +230,16 @@
 
   /* Panel */
   .panel {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    padding: 16px;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 0 rgba(0,0,0,.02);
+  }
+
+  /* Card */
+  .card {
     background: #fff;
     border: 1px solid #e5e7eb;
     border-radius: 14px;

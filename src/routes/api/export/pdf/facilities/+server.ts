@@ -2,22 +2,9 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { chromium } from 'playwright';
 
-function getOrigin(req: Request) {
-  // Rekonstruksi origin dari header request
-  // Default ke http://localhost:5173 jika tidak tersedia
-  try {
-    const url = new URL(req.url);
-    const proto = (req.headers.get('x-forwarded-proto') ?? url.protocol.replace(':','')) as string;
-    const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? url.host;
-    return `${proto}://${host}`;
-  } catch {
-    return 'http://localhost:5173';
-  }
-}
-
-export const GET: RequestHandler = async ({ request }) => {
-  const origin = getOrigin(request);
-  const targetUrl = `${origin}/facilities`;
+export const GET: RequestHandler = async ({ url }) => {
+  const targetUrl = new URL('/facilities', url.origin).href;
+  console.log('PDF export target URL:', targetUrl);
 
   const browser = await chromium.launch({ args: ['--no-sandbox'] });
   try {

@@ -10,13 +10,22 @@ export const GET: RequestHandler = async ({ params, url }) => {
   if (!params.id) throw new Error('ID fasilitas tidak disediakan');
   const id = decodeURIComponent(params.id);
   const ttl = Number(url.searchParams.get('ttl') ?? 60_000);
+  const noCache = url.searchParams.get('noCache') === '1';
   const ck = `facility_jadwal:${id}`;
-  const cached = cacheGet(ck, ttl);
-  if (cached) return new Response(JSON.stringify(cached), { headers: { 'Content-Type': 'application/json' } });
 
-  // Ambil profil fasilitas untuk nama
-  const fac = await fetch(url.origin + '/api/facilities').then(r => r.json());
-  const profile = (fac.facilities ?? []).find((f: any) => String(f.id) === id) ?? { nama: id };
+  // Clear cache jika noCache=1
+  if (noCache) {
+    const globalCache = (globalThis as any).__facility_cache__;
+    if (globalCache && typeof globalCache.clear === 'function') {
+      globalCache.clear();
+    }
+  }
+
+  const cached = cacheGet(ck, ttl);
+  if (cached && !noCache) return new Response(JSON.stringify(cached), { headers: { 'Content-Type': 'application/json' } });
+
+  // Buat profil dasar dari ID
+  const profile = { nama: id };
 
   const res = await getJson<DSList<Row>>('/inspektur-jadwal-inspeksi', { query: { page: 1, limit: 1000 } });
   const all = res.response ?? [];

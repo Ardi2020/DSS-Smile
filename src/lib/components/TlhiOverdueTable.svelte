@@ -18,7 +18,7 @@
     .slice(0, limit);
 </script>
 
-<div class="mt-6 rounded-xl border border-gray-200 bg-white/70 p-4 shadow-sm">
+<div class="card">
   <div class="mb-3 flex items-baseline justify-between">
     <h2 class="text-base font-semibold">TLHI Overdue (Top {limit})</h2>
     <small class="text-gray-500">status Belum TL / Proses Evaluasi yang melewati tanggal komitmen</small>
@@ -38,7 +38,7 @@
       </thead>
       <tbody>
         {#each rows as r, i}
-          <tr class="border-t border-gray-100 hover:bg-gray-50 transition">
+          <tr>
             <td class="py-2 pr-2 align-top">{i + 1}</td>
             <td class="py-2 pr-2 align-top">
               <a class="text-blue-700 hover:underline" href={"/facility/" + encodeURIComponent(r.id)}>
